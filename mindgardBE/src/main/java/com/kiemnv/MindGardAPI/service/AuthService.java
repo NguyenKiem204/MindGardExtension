@@ -192,6 +192,11 @@ public class AuthService {
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .roles(roles)
+                .avatarUrl(user.getAvatarUrl())
+                .phoneNumber(user.getPhoneNumber())
+                .level(user.getLevel())
+                .currentXP(user.getCurrentXP())
+                .xpToNextLevel(user.getXpToNextLevel())
                 .lastLogin(user.getLastLogin())
                 .build();
 

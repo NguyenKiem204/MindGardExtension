@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 public class PomodoroService {
 
     private final PomodoroRepository pomodoroRepository;
+    private final UserStatsService userStatsService;
 
     public Page<PomodoroSession> list(User user, Pageable pageable) {
         return pomodoroRepository.findByUserId(user.getId(), pageable);
@@ -50,7 +51,10 @@ public class PomodoroService {
                 .durationSeconds(durationMin * 60L)
                 .status(PomodoroSession.Status.FINISHED)
                 .build();
-        return pomodoroRepository.save(s);
+        PomodoroSession saved = pomodoroRepository.save(s);
+        // update stats + XP/level
+        userStatsService.applyCompletedSession(user, endAt, durationMin * 60L);
+        return saved;
     }
 
     /** FE extension: list for Statistics / pomodoroStats (dateISO, durationMin, taskTitle) */
@@ -125,6 +129,10 @@ public class PomodoroService {
             p.setDurationSeconds(java.time.Duration.between(p.getStartAt(), p.getEndAt()).getSeconds());
         }
         p.setStatus(interrupted ? PomodoroSession.Status.ABORTED : PomodoroSession.Status.FINISHED);
-        return pomodoroRepository.save(p);
+        PomodoroSession saved = pomodoroRepository.save(p);
+        if (!interrupted && saved.getEndAt() != null && saved.getDurationSeconds() != null) {
+            userStatsService.applyCompletedSession(user, saved.getEndAt(), saved.getDurationSeconds());
+        }
+        return saved;
     }
 }

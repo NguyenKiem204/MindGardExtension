@@ -73,6 +73,21 @@ public class User implements UserDetails {
     @Column(name = "last_login")
     private LocalDateTime lastLogin;
 
+    @Column(name = "level")
+    @Builder.Default
+    private Integer level = 1;
+
+    @Column(name = "current_xp")
+    @Builder.Default
+    private Long currentXP = 0L;
+
+    @Column(name = "xp_to_next_level")
+    @Builder.Default
+    private Long xpToNextLevel = 100L;
+
+    @Column(name = "account_tag", length = 10)
+    private String accountTag;
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return roles.stream()

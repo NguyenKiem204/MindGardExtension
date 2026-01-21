@@ -1,56 +1,96 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, UserPlus, Gift, Copy } from "lucide-react";
 
-export default function LeaderProfileModal({ isOpen, onClose, user }) {
+export default function LeaderProfileModal({ isOpen, onClose, user, year: controlledYear, onYearChange, onFriendClick, friendBusy, onCopyLink }) {
   // GitHub-like heatmap data (weeks x 7 days)
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [yearInternal, setYearInternal] = useState(new Date().getFullYear());
+  const year = controlledYear ?? yearInternal;
+  const setYear = (next) => {
+    if (onYearChange) onYearChange(next);
+    else setYearInternal(next);
+  };
   const [tooltip, setTooltip] = useState(null); // {left, top, dateStr, minutes}
+
+  const displayName = user?.displayName || user?.name || user?.username || "User";
+  const avatarValue = user?.avatarUrl || user?.avatar;
+  const level = Number(user?.level ?? 20);
+  const currentXP = Number(user?.currentXP ?? 5647);
+  const xpToNextLevel = Math.max(1, Number(user?.xpToNextLevel ?? 5727));
+  const remainingXP = Number(user?.remainingXPToNextLevel ?? Math.max(0, xpToNextLevel - currentXP));
+  const xpPct = Math.min(100, Math.max(0, (currentXP / xpToNextLevel) * 100));
+
+  const streakDays = Number(user?.currentStreakDays ?? 1);
+  const totalStudyMinutes = Number(user?.totalStudyDurationMinutes ?? (419 * 60 + 26));
+  const pomodorosCompleted = Number(user?.pomodorosCompletedCount ?? 533);
+  const pomodorosThisWeek = Number(user?.pomodorosThisWeekCount ?? 8);
+  const dailyAvgMinutes = Number(user?.dailyAverageStudyDurationLast30DaysMinutes ?? (5 * 60 + 40));
+  const giftsSent = Number(user?.giftsSentCount ?? 9);
+
+  const stats = [
+    { title: 'Current Streak', value: String(streakDays), sub: streakDays === 1 ? 'DAY' : 'DAYS', color: 'from-orange-500/30 to-orange-600/30' },
+    { title: 'Total hours', value: formatMinutes(totalStudyMinutes), sub: '', color: 'from-emerald-500/30 to-emerald-600/30' },
+    { title: 'Pomodoros Completed', value: String(pomodorosCompleted), sub: '', color: 'from-violet-500/30 to-violet-600/30' },
+    { title: 'This Week', value: String(pomodorosThisWeek), sub: 'POMODOROS', color: 'from-sky-500/30 to-sky-600/30' },
+    { title: 'Daily average', value: formatMinutes(dailyAvgMinutes), sub: 'LAST 30 DAYS', color: 'from-cyan-500/30 to-cyan-600/30' },
+    { title: 'Gifts Sent', value: String(giftsSent), sub: '', color: 'from-rose-500/30 to-rose-600/30' },
+  ];
+
+  const relationship = user?.friendRequestStatus || "NONE";
+  const friendLabel =
+    relationship === "ACCEPTED" ? "Unfriend" :
+      relationship === "SENT" ? "Cancel request" :
+        relationship === "RECEIVED" ? "Accept request" :
+          relationship === "SELF" ? "You" : "Add friend";
+
+  const heatmap = useMemo(() => buildHeatmap(year, user?.studyActivityData), [year, user?.studyActivityData]);
+  const gifts = Array.from({ length: 4 }, (_, i) => ({ id: i + 1, label: '1⭐' }));
 
   if (!isOpen || !user) return null;
 
-  const stats = [
-    { title: 'Current Streak', value: '1', sub: 'DAY', color: 'from-orange-500/30 to-orange-600/30' },
-    { title: 'Total hours', value: '419h 26m', sub: '', color: 'from-emerald-500/30 to-emerald-600/30' },
-    { title: 'Pomodoros Completed', value: '533', sub: '', color: 'from-violet-500/30 to-violet-600/30' },
-    { title: 'This Week', value: '8', sub: 'POMODOROS', color: 'from-sky-500/30 to-sky-600/30' },
-    { title: 'Daily average', value: '5h 40m', sub: 'LAST 30 DAYS', color: 'from-cyan-500/30 to-cyan-600/30' },
-    { title: 'Gifts Sent', value: '9', sub: '', color: 'from-rose-500/30 to-rose-600/30' },
-  ];
-
-  const heatmap = buildHeatmap(year);
-  const gifts = Array.from({ length: 4 }, (_, i) => ({ id: i+1, label: '1⭐' }));
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-4xl bg-black/30 backdrop-blur-2xl border border-white/20 rounded-2xl shadow-2xl mx-4 h-[70vh] max-h-[70vh] flex flex-col pointer-events-auto" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 overflow-hidden flex items-center justify-center text-white font-semibold">
-              {user?.avatar || 'U'}
+              {typeof avatarValue === "string" && (avatarValue.startsWith("http") || avatarValue.startsWith("data:") || avatarValue.startsWith("/")) ? (
+                <img src={avatarValue} alt={displayName} className="w-full h-full object-cover" />
+              ) : (
+                <span>{(typeof avatarValue === "string" && avatarValue.length <= 3 ? avatarValue : String(displayName).charAt(0).toUpperCase())}</span>
+              )}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-white text-lg font-semibold">{user?.name || 'User'}</h3>
+                <h3 className="text-white text-lg font-semibold">{displayName}</h3>
                 {user?.country && <span className="px-2 py-0.5 text-xs rounded bg-white/10 text-white/80">{user.country}</span>}
               </div>
-              <div className="text-xs text-white/60 mt-1">LV. 20</div>
+              <div className="text-xs text-white/60 mt-1">LV. {level}</div>
               {/* Progress bar */}
               <div className="mt-2 w-72 h-2 rounded-full bg-white/10">
-                <div className="h-2 rounded-full bg-emerald-500" style={{ width: '85%' }} />
+                <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${xpPct}%` }} />
               </div>
-              <div className="text-[10px] text-white/50 mt-1">5647 / 5727 XP • 80 XP to next</div>
+              <div className="text-[10px] text-white/50 mt-1">{currentXP} / {xpToNextLevel} XP • {remainingXP} XP to next</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2">
               <Gift className="w-4 h-4"/> Send Gift
             </button>
-            <button className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2">
-              <UserPlus className="w-4 h-4"/> Add friend
+            <button
+              onClick={() => onFriendClick && onFriendClick(user)}
+              disabled={!onFriendClick || friendBusy || relationship === "SELF"}
+              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              title={relationship === "RECEIVED" ? "Accept request" : relationship === "SENT" ? "Cancel request" : relationship === "ACCEPTED" ? "Unfriend" : "Add friend"}
+            >
+              <UserPlus className="w-4 h-4"/> {friendBusy ? "..." : friendLabel}
             </button>
-            <button className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2">
+            <button
+              onClick={onCopyLink || (() => navigator.clipboard?.writeText?.(window.location.href))}
+              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2"
+            >
               <Copy className="w-4 h-4"/> Copy link
             </button>
             <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center">
@@ -77,9 +117,9 @@ export default function LeaderProfileModal({ isOpen, onClose, user }) {
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-white font-semibold">Study Activity</h4>
               <div className="flex items-center gap-2 text-white/80">
-                <button onClick={()=>setYear(y=>y-1)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs">Prev</button>
+                <button onClick={()=>setYear(year-1)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs">Prev</button>
                 <span className="min-w-[64px] text-center text-sm">{year}</span>
-                <button onClick={()=>setYear(y=>y+1)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs">Next</button>
+                <button onClick={()=>setYear(year+1)} className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-xs">Next</button>
               </div>
             </div>
             <div className="relative overflow-auto custom-scroll p-4 rounded-lg border border-white/10 bg-white/5">
@@ -210,6 +250,8 @@ export default function LeaderProfileModal({ isOpen, onClose, user }) {
         `}</style>
       </div>
     </div>
+    ,
+    document.body
   );
 }
 
@@ -229,10 +271,12 @@ function formatMinutes(min){
   return `${mm}m`;
 }
 
-function buildHeatmap(year){
+function buildHeatmap(year, studyActivityData){
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const months = [];
   let maxRows = 0;
+  const map = studyActivityData || {};
+  const hasRealData = map && typeof map === "object" && Object.keys(map).length > 0;
 
   // Build each month
   for (let m = 0; m < 12; m++) {
@@ -253,7 +297,8 @@ function buildHeatmap(year){
     // Add days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, m, day);
-      const minutes = ((m * 13 + day) % 5) * 30; // mock minutes pattern
+      const key = `${year}-${String(m+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+      const minutes = hasRealData ? Number(map[key] || 0) : (((m * 13 + day) % 5) * 30);
       currentRow.push({ date, minutes });
       
       // Start new row every Sunday (day 0)

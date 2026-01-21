@@ -6,6 +6,7 @@ import UserProfileModal from "./UserProfileModal";
 import FocusModeModal from "./FocusModeModal";
 import LeaderboardModal from "./LeaderboardModal";
 import { Play, Pause, SkipForward, Settings, Volume2, Image, MessageCircle, Zap, Clock, Music, Video, Grid3x3, Cloud, BarChart3, MoreHorizontal, Minus, Maximize2, Square, X } from "lucide-react";
+import { authService } from "../services/authService";
 
 export default function StudyFocusUI() {
   const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes in seconds
@@ -33,6 +34,10 @@ export default function StudyFocusUI() {
   const [breakDuration, setBreakDuration] = useState(5); // minutes
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPipActive, setIsPipActive] = useState(false);
+  const [userAvatar, setUserAvatar] = useState(null);
+  const [userName, setUserName] = useState("kiem");
+  const [accountType, setAccountType] = useState("Guest Account");
+  const [avatarError, setAvatarError] = useState(false);
   
   const isFocusing = isRunning && isFocusMode;
   const pipVideoRef = useRef(null);
@@ -67,6 +72,21 @@ export default function StudyFocusUI() {
       } catch {}
     })();
   }, []);
+
+  // Load user info from auth service
+  useEffect(() => {
+    const cached = authService.getCachedAuth();
+    if (cached?.user) {
+      setUserAvatar(cached.user.avatarUrl || null);
+      setUserName(cached.user.username || cached.user.email || "kiem");
+      setAccountType(
+        (Array.isArray(cached.user.roles) && cached.user.roles.join(", ")) ||
+        cached.user.roleName ||
+        "Guest Account"
+      );
+      setAvatarError(false); // Reset error when avatar changes
+    }
+  }, [isUserProfileModalOpen]); // Reload when modal opens
 
   // Save focus mode settings
   useEffect(() => {
@@ -1091,17 +1111,28 @@ export default function StudyFocusUI() {
           <div className="relative">
             <button
               onClick={() => setIsUserProfileModalOpen(true)}
-              className="w-9 h-9 bg-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-700 transition cursor-pointer"
+              className="w-9 h-9 bg-slate-800 rounded-lg flex items-center justify-center hover:bg-slate-700 transition cursor-pointer overflow-hidden"
             >
-              <span className="text-white font-semibold text-sm">K</span>
+              {userAvatar && !avatarError ? (
+                <img 
+                  src={userAvatar} 
+                  alt={userName}
+                  className="w-full h-full object-cover"
+                  onError={() => setAvatarError(true)}
+                />
+              ) : (
+                <span className="text-white font-semibold text-sm">
+                  {userName?.charAt(0)?.toUpperCase() || 'K'}
+                </span>
+              )}
             </button>
             
             {/* User Profile Modal - positioned relative to avatar */}
             <UserProfileModal
               isOpen={isUserProfileModalOpen}
               onClose={() => setIsUserProfileModalOpen(false)}
-              userName="kiem"
-              accountType="Guest Account"
+              userName={userName}
+              accountType={accountType}
               onOpenFocusMode={() => setIsFocusModeModalOpen(true)}
             />
           </div>

@@ -111,6 +111,9 @@ public class AuthController {
                 .lastLogin(user.getLastLogin())
                 .avatarUrl(user.getAvatarUrl())
                 .phoneNumber(user.getPhoneNumber())
+                .level(user.getLevel())
+                .currentXP(user.getCurrentXP())
+                .xpToNextLevel(user.getXpToNextLevel())
                 .build();
 
         return ResponseEntity.ok(ApiResponse.success(userInfo, "Thông tin người dùng được lấy thành công"));

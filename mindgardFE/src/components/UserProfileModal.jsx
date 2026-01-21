@@ -1,8 +1,22 @@
 import { useEffect, useState } from "react";
-import { X, Gift, User, Search, Settings, Users, ExternalLink, Grid3x3, Brain } from "lucide-react";
+import { createPortal } from "react-dom";
+import { X, Gift, User, Search, Settings, Users, ExternalLink, Grid3x3, Brain, LogIn, LogOut, Loader2 } from "lucide-react";
+import { authService } from "../services/authService";
+import PublicProfileModal from "./PublicProfileModal";
+import FriendsModal from "./FriendsModal";
 
 export default function UserProfileModal({ isOpen, onClose, userName = "kiem", accountType = "Guest Account", onOpenFocusMode }) {
   const [isVisible, setIsVisible] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [displayName, setDisplayName] = useState(userName);
+  const [displayAccountType, setDisplayAccountType] = useState(accountType);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [loginError, setLoginError] = useState("");
+  const [isSubmittingLogin, setIsSubmittingLogin] = useState(false);
+  const [showPublicProfileModal, setShowPublicProfileModal] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [showFriendsModal, setShowFriendsModal] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -16,17 +30,32 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === "Escape") {
-        onClose();
+        if (showLoginModal) {
+          setShowLoginModal(false);
+        } else if (showPublicProfileModal) {
+          setShowPublicProfileModal(false);
+        } else if (showFriendsModal) {
+          setShowFriendsModal(false);
+        } else {
+          onClose();
+        }
       }
     };
 
     const handleClickOutside = (e) => {
+      if (showLoginModal) {
+        if (!e.target.closest('.mindgard-login-modal')) {
+          setShowLoginModal(false);
+        }
+        return;
+      }
+
       if (isOpen && !e.target.closest('.user-profile-modal')) {
         onClose();
       }
     };
 
-    if (isOpen) {
+    if (isOpen || showLoginModal || showPublicProfileModal || showFriendsModal) {
       document.addEventListener("keydown", handleEscape);
       document.addEventListener("mousedown", handleClickOutside);
     }
@@ -35,29 +64,110 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
       document.removeEventListener("keydown", handleEscape);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, showLoginModal, showPublicProfileModal, showFriendsModal]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setDisplayName(userName);
+      setDisplayAccountType(accountType);
+    }
+  }, [userName, accountType, isAuthenticated]);
+
+  useEffect(() => {
+    const cached = authService.getCachedAuth();
+    if (cached?.accessToken) {
+      const info = authService.getDisplayInfo(userName, accountType);
+      setIsAuthenticated(true);
+      setDisplayName(info.name);
+      setDisplayAccountType(info.type);
+      if (cached?.user?.id) {
+        setUserId(cached.user.id);
+      }
+    }
+  }, [userName, accountType]);
+
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    if (!loginForm.username.trim() || !loginForm.password.trim()) {
+      setLoginError("Vui lòng nhập đầy đủ tài khoản và mật khẩu.");
+      return;
+    }
+    setLoginError("");
+    setIsSubmittingLogin(true);
+    try {
+      const authData = await authService.login({
+        username: loginForm.username.trim(),
+        password: loginForm.password,
+      });
+      setIsAuthenticated(true);
+      if (authData?.user?.id) setUserId(authData.user.id);
+      const info = authService.getDisplayInfo(
+        authData?.user?.username || loginForm.username,
+        authData?.user?.roles?.join(", ") || "Member"
+      );
+      setDisplayName(info.name);
+      setDisplayAccountType(info.type);
+      setShowLoginModal(false);
+      setLoginForm({ username: "", password: "" });
+    } catch (err) {
+      setLoginError(err?.response?.data?.message || err?.message || "Không thể đăng nhập.");
+    } finally {
+      setIsSubmittingLogin(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await authService.logout();
+    setIsAuthenticated(false);
+    setDisplayName(userName);
+    setDisplayAccountType(accountType);
+  };
+
+  // Keep component mounted while any portal modal is open,
+  // otherwise opening PublicProfile/Friends would immediately unmount.
+  const hasAnyOverlayOpen = showLoginModal || showPublicProfileModal || showFriendsModal;
+  if (!isOpen && !hasAnyOverlayOpen) return null;
+
+  const authMenuItem = isAuthenticated
+    ? { icon: LogOut, label: "Logout", action: handleLogout }
+    : { icon: LogIn, label: "Login", action: () => setShowLoginModal(true) };
 
   const menuItems = [
     { icon: Gift, label: "Upgrade to Plus", hasChevron: true },
-    { icon: User, label: "Public profile", hasChevron: true },
+    { 
+      icon: User, 
+      label: "Public profile", 
+      hasChevron: true,
+      action: () => {
+        if (userId) {
+          setShowPublicProfileModal(true);
+          onClose();
+        }
+      }
+    },
     { icon: Brain, label: "Focus mode", hasChevron: false },
     { icon: Search, label: "Find study room", hasChevron: true },
     { icon: Settings, label: "App settings", hasChevron: true },
-    { icon: Users, label: "Manage friends", hasChevron: true },
-    { icon: null, label: "Discord", hasExternalLink: true, customIcon: "discord" },
+    { icon: Users, label: "Manage friends", hasChevron: true, action: () => { setShowFriendsModal(true); onClose(); } },
+    { icon: null, label: "Discord", hasExternalLink: true, customIcon: "discord", dividerBefore: true },
     { icon: null, label: "Chrome extension", hasExternalLink: true, customIcon: "puzzle" },
     { icon: Grid3x3, label: "Our apps", hasChevron: true },
+    { ...authMenuItem, dividerBefore: true, hasChevron: false },
   ];
 
-  const handleItemClick = (label) => {
-    console.log(`Clicked: ${label}`);
-    if (label === 'Focus mode' && onOpenFocusMode) { onClose(); onOpenFocusMode(); }
+  const handleItemClick = (item) => {
+    console.log(`Clicked: ${item.label}`);
+    if (item.action) {
+      item.action();
+      return;
+    }
+    if (item.label === 'Focus mode' && onOpenFocusMode) { onClose(); onOpenFocusMode(); }
   };
 
   return (
-    <div 
+    <>
+    {isOpen && (
+      <div 
       className={`
         absolute top-full right-0 mt-2 w-[340px] max-h-[70vh]
         bg-black/30 backdrop-blur-2xl
@@ -70,8 +180,8 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
         {/* Header */}
         <div className="flex items-start justify-between p-5 pb-4 border-b border-white/10">
           <div>
-            <h2 className="text-2xl font-bold text-white mb-1">{userName}</h2>
-            <p className="text-sm text-gray-400">{accountType}</p>
+            <h2 className="text-2xl font-bold text-white mb-1">{displayName}</h2>
+            <p className="text-sm text-gray-400">{displayAccountType}</p>
           </div>
           <button
             onClick={onClose}
@@ -84,9 +194,9 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
 
         {/* Menu Items */}
         <div className="py-2 overflow-y-auto max-h-[calc(70vh-100px)]">
-          {menuItems.map((item, index) => {
+          {menuItems.map((item) => {
             const IconComponent = item.icon;
-            const showSeparator = index === 4; // Show separator before Discord
+            const showSeparator = item.dividerBefore;
             
             return (
               <div key={item.label}>
@@ -94,7 +204,7 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
                   <div className="h-px bg-white/10 mx-6 my-2" />
                 )}
                 <button
-                  onClick={() => handleItemClick(item.label)}
+                  onClick={() => handleItemClick(item)}
                   className="w-full flex items-center gap-4 px-6 py-3 text-white hover:bg-white/5 transition-colors"
                 >
                   {/* Icon */}
@@ -131,6 +241,97 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
           })}
         </div>
 
-    </div>
+        {showLoginModal &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center px-4 backdrop-blur-md bg-black/70"
+              onClick={() => setShowLoginModal(false)}
+            >
+              <div
+                className="mindgard-login-modal relative w-full max-w-md rounded-2xl border border-white/15 bg-black/90 backdrop-blur-xl shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setShowLoginModal(false)}
+                  className="absolute right-3 top-3 text-gray-300 hover:text-white transition-colors z-10"
+                  aria-label="Close login modal"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <div className="p-6 sm:p-7">
+                  <div className="mb-4">
+                    <h3 className="text-xl font-semibold text-white mb-1">Đăng nhập</h3>
+                    <p className="text-sm text-gray-400">Sử dụng tài khoản MindGard để đồng bộ.</p>
+                  </div>
+                  <form className="space-y-4" onSubmit={handleLoginSubmit}>
+                    <div>
+                      <label className="block text-sm text-gray-300 mb-1">Tài khoản</label>
+                      <input
+                        type="text"
+                        value={loginForm.username}
+                        onChange={(e) => setLoginForm((prev) => ({ ...prev, username: e.target.value }))}
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                        placeholder="Username"
+                        autoComplete="username"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-300 mb-1">Mật khẩu</label>
+                      <input
+                        type="password"
+                        value={loginForm.password}
+                        onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                      />
+                    </div>
+
+                    {loginError && (
+                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                        {loginError}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isSubmittingLogin}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-600 hover:to-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSubmittingLogin && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <span>{isSubmittingLogin ? "Đang đăng nhập..." : "Đăng nhập"}</span>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+
+        <PublicProfileModal
+          isOpen={showPublicProfileModal}
+          onClose={() => setShowPublicProfileModal(false)}
+          userId={userId}
+        />
+
+        <FriendsModal
+          isOpen={showFriendsModal}
+          onClose={() => setShowFriendsModal(false)}
+        />
+
+      </div>
+    )}
+
+    <PublicProfileModal
+      isOpen={showPublicProfileModal}
+      onClose={() => setShowPublicProfileModal(false)}
+      userId={userId}
+    />
+
+    <FriendsModal
+      isOpen={showFriendsModal}
+      onClose={() => setShowFriendsModal(false)}
+    />
+    </>
   );
 }

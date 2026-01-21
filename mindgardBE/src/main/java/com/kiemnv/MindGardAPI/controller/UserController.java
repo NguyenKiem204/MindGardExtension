@@ -65,4 +65,23 @@ public class UserController {
         User user = (User) authentication.getPrincipal();
         return ResponseEntity.ok(ApiResponse.success(user, "Profile retrieved successfully"));
     }
+
+    @GetMapping("/{id}/public-profile")
+    @Operation(summary = "Get public profile", description = "Get public profile information for a user including stats and study activity.")
+    public ResponseEntity<ApiResponse<com.kiemnv.MindGardAPI.dto.response.PublicProfileResponse>> getPublicProfile(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer year,
+            Authentication authentication) {
+        Long viewerId = null;
+        try {
+            if (authentication != null) {
+                Object principal = authentication.getPrincipal();
+                if (principal instanceof User) {
+                    viewerId = ((User) principal).getId();
+                }
+            }
+        } catch (Exception ignored) {}
+        com.kiemnv.MindGardAPI.dto.response.PublicProfileResponse profile = userService.getPublicProfile(id, year, viewerId);
+        return ResponseEntity.ok(ApiResponse.success(profile, "Public profile retrieved successfully"));
+    }
 }

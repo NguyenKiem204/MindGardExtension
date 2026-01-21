@@ -32,6 +32,9 @@ public class AuthResponse {
         private Set<String> roles;
         private String avatarUrl;
         private String phoneNumber;
+        private Integer level;
+        private Long currentXP;
+        private Long xpToNextLevel;
         private LocalDateTime lastLogin;
     }
 }
