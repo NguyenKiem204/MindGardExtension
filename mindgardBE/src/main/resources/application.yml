@@ -1,0 +1,12 @@
+app:
+  jwt:
+    secret-key: "${APP_JWT_SECRET_KEY:rUOugZS6xjj75a4e2xksfkBi1rv0h9Oo22wASIbY+i1Zf2nCPbwgjhPw2m+r1Zj4}"
+    access-token-expiration: 900000 # 15 minutes
+    refresh-token-expiration: 2592000000 # 30 days
+    issuer: "MindGard Extension Productivity"
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui
