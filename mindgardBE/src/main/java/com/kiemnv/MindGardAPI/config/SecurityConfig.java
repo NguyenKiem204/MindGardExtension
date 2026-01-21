@@ -85,6 +85,7 @@ public class SecurityConfig {
                                 .requestMatchers("/api/blogs/**").permitAll()
                                 .requestMatchers("/api/service-fees/**").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/public/**").permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/quotes/**").permitAll() // FE extension: daily/random without auth
                                 .requestMatchers("/api/admin/**").hasRole("ADMIN") // Đảm bảo dòng này được bảo vệ
 //                        .requestMatchers("/api/building-services/**").hasAnyRole("USER", "ADMIN")
                                 .requestMatchers("/api/building-services/**").permitAll()
@@ -107,7 +108,8 @@ public class SecurityConfig {
                 "zbrowser://h5.zdn.vn",
                 "http://localhost:[*]",
                 "http://127.0.0.1:[*]",
-                "https://harmless-right-chipmunk.ngrok-free.app"
+                "https://harmless-right-chipmunk.ngrok-free.app",
+                "chrome-extension://*"  // FE browser extension
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
