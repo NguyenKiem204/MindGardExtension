@@ -2,6 +2,7 @@ package com.kiemnv.MindGardAPI.config;
 
 //import com.kiemnv.SpringSecurityJWT.filter.JwtAuthenticationFilter;
 //import com.kiemnv.SpringSecurityJWT.service.UserService;
+
 import com.kiemnv.MindGardAPI.filter.JwtAuthenticationFilter;
 import com.kiemnv.MindGardAPI.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(10);
     }
+
     @Bean
     public RestTemplate restTemplate() {
         RestTemplate restTemplate = new RestTemplate(clientHttpRequestFactory());
@@ -78,20 +80,25 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(jwtAuthenticationEntryPoint))
                 .authorizeHttpRequests(authz -> authz
-                                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                                .requestMatchers("/v3/api-docs/**","/swagger/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                                 .requestMatchers("/api/feedback/**").permitAll()
                                 .requestMatchers("/api/auth/**").permitAll()
                                 .requestMatchers("/api/news/**").permitAll()
                                 .requestMatchers("/api/blogs/**").permitAll()
                                 .requestMatchers("/api/service-fees/**").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/public/**").permitAll()
-                                .requestMatchers(HttpMethod.GET, "/api/quotes/**").permitAll() // FE extension: daily/random without auth
-                                .requestMatchers("/api/admin/**").hasRole("ADMIN") // Đảm bảo dòng này được bảo vệ
-//                        .requestMatchers("/api/building-services/**").hasAnyRole("USER", "ADMIN")
+                                .requestMatchers(HttpMethod.GET, "/api/quotes/**").permitAll()
+                                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                                 .requestMatchers("/api/building-services/**").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/users/**").hasAnyRole("USER", "ADMIN")
                                 .requestMatchers(HttpMethod.PUT, "/api/users/**").hasAnyRole("USER", "ADMIN")
                                 .requestMatchers(HttpMethod.DELETE, "/api/users/**").hasRole("ADMIN")
+                                .requestMatchers("/api/pomodoros/**").hasAnyRole("USER", "ADMIN")
+                                .requestMatchers("/api/friends/**").hasAnyRole("USER", "ADMIN")
+                                .requestMatchers(HttpMethod.GET, "/api/leaderboard").permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/leaderboard/top").permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/leaderboard/real").hasAnyRole("USER", "ADMIN")
+                                .requestMatchers("/api/stats/**").hasAnyRole("USER", "ADMIN")
                                 .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
@@ -104,12 +111,10 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(Arrays.asList(
-                "https://h5.zdn.vn",
-                "zbrowser://h5.zdn.vn",
                 "http://localhost:[*]",
                 "http://127.0.0.1:[*]",
                 "https://harmless-right-chipmunk.ngrok-free.app",
-                "chrome-extension://*"  // FE browser extension
+                "chrome-extension://*"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));

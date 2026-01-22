@@ -1,6 +1,5 @@
 import axios from "axios";
 
-// Simple auth manager for token handling
 export const authManager = {
   isAuthenticated: () => {
     return localStorage.getItem("accessToken") !== null;
@@ -10,12 +9,10 @@ export const authManager = {
     const expiresAt = localStorage.getItem("tokenExpiresAt");
     if (!expiresAt) return true;
     const remainingMs = parseInt(expiresAt) - Date.now();
-    // refresh when < 2 minutes remaining
     return remainingMs <= 2 * 60 * 1000;
   },
 
   ensureValidToken: async () => {
-    // If token is close to expiry, proactively refresh
     if (authManager.shouldRefreshToken()) {
       return await authManager.refreshToken();
     }
@@ -47,9 +44,9 @@ export const authManager = {
         `${
           import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api"
         }/auth/refresh`,
-        {}, // Empty body - refresh token comes from cookie
+        {},
         {
-          withCredentials: true, // This sends cookies
+          withCredentials: true, 
           headers: {
             "Content-Type": "application/json",
             "ngrok-skip-browser-warning": "true",
@@ -82,7 +79,6 @@ export const authManager = {
     }
   },
 
-  // Method for testing refresh token with body (for Swagger testing)
   refreshTokenWithBody: async (refreshToken) => {
     try {
       const response = await axios.post(
@@ -115,9 +111,7 @@ export const authManager = {
   },
 };
 
-// Initialize background auto-refresh (no React hooks)
 export function initAuthAutoRefresh() {
-  // Visibility-based trigger
   if (typeof document !== "undefined") {
     document.addEventListener("visibilitychange", async () => {
       if (
@@ -136,7 +130,6 @@ export function initAuthAutoRefresh() {
     });
   }
 
-  // Periodic lightweight check (every 60s)
   if (typeof window !== "undefined") {
     setInterval(async () => {
       if (!authManager.isAuthenticated()) return;
@@ -145,7 +138,7 @@ export function initAuthAutoRefresh() {
           console.log("[Auth] interval -> refreshing token");
           await authManager.refreshToken();
         } catch {
-          // ignore
+          // ignore refresh token error
         }
       }
     }, 60 * 1000);
@@ -268,8 +261,9 @@ api.interceptors.response.use(
           );
           authManager.clearTokens();
           processQueue(new Error("Refresh token failed"));
+          // Dispatch event để UI update
           if (typeof window !== "undefined") {
-            window.location.href = "/login";
+            window.dispatchEvent(new CustomEvent("mindgard_auth_expired"));
           }
           return Promise.reject(error);
         }
@@ -280,8 +274,9 @@ api.interceptors.response.use(
         });
         authManager.clearTokens();
         processQueue(refreshError);
+        // Dispatch event để UI update
         if (typeof window !== "undefined") {
-          window.location.href = "/login";
+          window.dispatchEvent(new CustomEvent("mindgard_auth_expired"));
         }
         return Promise.reject(refreshError);
       } finally {

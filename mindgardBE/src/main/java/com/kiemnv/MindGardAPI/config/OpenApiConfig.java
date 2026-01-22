@@ -57,7 +57,11 @@ public class OpenApiConfig {
     public GroupedOpenApi publicApi() {
         return GroupedOpenApi.builder()
                 .group("public")
-                .pathsToMatch("/api/public/**", "/api/news/**", "/api/blogs/**", "/api/feedback/**", "/api/service-fees/**")
+                .pathsToMatch("/api/public/**", "/api/quotes/**", "/api/friends/**",
+                        "/api/leaderboard/**", "/api/notes/**", "/api/notes/**",
+                        "/api/onboarding/**", "/api/pomodoros/**", "/api/quicklinks/**",
+                        "/api/scenes/**", "/api/settings/**", "/api/sounds/**",
+                        "/api/todos/**", "/api/Weather/**")
                 .build();
     }
 }

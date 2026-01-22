@@ -34,6 +34,11 @@ const clearAuth = () => {
   localStorage.removeItem("accessToken");
   localStorage.removeItem("tokenExpiresAt");
   localStorage.removeItem("refreshToken");
+  // Dispatch event để các component biết auth đã clear
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("mindgard_auth_cleared"));
+    window.dispatchEvent(new CustomEvent("mindgard_auth_changed", { detail: { authenticated: false } }));
+  }
 };
 
 const normalizeAuthResponse = (responseData) => {
@@ -42,7 +47,21 @@ const normalizeAuthResponse = (responseData) => {
 };
 
 export const authService = {
-  isAuthenticated: () => !!loadAuth()?.accessToken,
+  isAuthenticated: () => {
+    const cached = loadAuth();
+    if (!cached?.accessToken) return false;
+    // Check token expiry
+    const expiresAt = localStorage.getItem("tokenExpiresAt");
+    if (expiresAt) {
+      const remaining = parseInt(expiresAt) - Date.now();
+      if (remaining <= 0) {
+        // Token expired, clear auth
+        clearAuth();
+        return false;
+      }
+    }
+    return true;
+  },
 
   getCachedAuth: () => loadAuth(),
 
@@ -62,6 +81,21 @@ export const authService = {
     const res = await api.post("/auth/login", { username, password });
     const authData = normalizeAuthResponse(res.data);
     persistAuth(authData);
+    // Dispatch event để UI update
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("mindgard_auth_changed", { detail: { authenticated: true } }));
+    }
+    return authData;
+  },
+
+  register: async ({ username, email, password, firstName, lastName }) => {
+    const res = await api.post("/auth/register", { username, email, password, firstName, lastName });
+    const authData = normalizeAuthResponse(res.data);
+    persistAuth(authData);
+    // Dispatch event để UI update
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("mindgard_auth_changed", { detail: { authenticated: true } }));
+    }
     return authData;
   },
 

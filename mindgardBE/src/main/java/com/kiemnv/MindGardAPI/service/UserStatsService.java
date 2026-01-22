@@ -55,6 +55,27 @@ public class UserStatsService {
      */
     @Transactional
     public void applyCompletedSession(User user, LocalDateTime endAtUtc, long durationSeconds) {
+        applySession(user, endAtUtc, durationSeconds, true);
+    }
+
+    /**
+     * Called when a partial/interrupted session should be recorded.
+     * Updates same as applyCompletedSession but does NOT increment pomodoroCount.
+     * Only applies if duration >= minimum threshold (1 minute).
+     */
+    @Transactional
+    public void applyPartialSession(User user, LocalDateTime endAtUtc, long durationSeconds) {
+        // Minimum 1 minute to count
+        if (durationSeconds < 60) return;
+        applySession(user, endAtUtc, durationSeconds, false);
+    }
+
+    /**
+     * Internal method to apply session stats (completed or partial).
+     * @param countAsPomodoro if true, increments pomodoroCount; if false, only adds time/XP/streak
+     */
+    @Transactional
+    private void applySession(User user, LocalDateTime endAtUtc, long durationSeconds, boolean countAsPomodoro) {
         if (user == null || user.getId() == null) return;
         if (endAtUtc == null || durationSeconds <= 0) return;
 
@@ -70,7 +91,9 @@ public class UserStatsService {
 
         // totals
         s.setTotalFocusSeconds((s.getTotalFocusSeconds() != null ? s.getTotalFocusSeconds() : 0L) + durationSeconds);
-        s.setPomodoroCount((s.getPomodoroCount() != null ? s.getPomodoroCount() : 0) + 1);
+        if (countAsPomodoro) {
+            s.setPomodoroCount((s.getPomodoroCount() != null ? s.getPomodoroCount() : 0) + 1);
+        }
 
         // by-day aggregation (minutes)
         String dayKey = endAtUtc.toLocalDate().toString();
@@ -80,6 +103,7 @@ public class UserStatsService {
         s.setByDayJson(safeWriteByDay(byDay));
 
         // streak: compute based on finished sessions (authoritative)
+        // For partial sessions, we still check if there's any activity on that day
         int streak = computeCurrentStreakDays(user.getId());
         s.setDailyStreak(streak);
         s.setUpdatedAt(LocalDateTime.now());
@@ -108,9 +132,15 @@ public class UserStatsService {
     }
 
     private int computeCurrentStreakDays(Long userId) {
-        // Use last 1000 finished sessions, derive unique date set
-        List<PomodoroSession> list = pomodoroRepository.findTop1000ByUserIdAndStatusOrderByStartAtDesc(userId, PomodoroSession.Status.FINISHED);
-        Set<String> days = list.stream()
+        // Use last 1000 sessions (FINISHED or ABORTED with duration >= 1 min), derive unique date set
+        // Include both completed and partial sessions for streak calculation
+        List<PomodoroSession> finished = pomodoroRepository.findTop1000ByUserIdAndStatusOrderByStartAtDesc(userId, PomodoroSession.Status.FINISHED);
+        List<PomodoroSession> aborted = pomodoroRepository.findTop1000ByUserIdAndStatusOrderByStartAtDesc(userId, PomodoroSession.Status.ABORTED);
+        
+        Set<String> days = new java.util.HashSet<>();
+        
+        // Add finished sessions
+        finished.stream()
                 .map(p -> {
                     try {
                         if (p.getEndAt() != null) return p.getEndAt().toLocalDate().toString();
@@ -123,7 +153,24 @@ public class UserStatsService {
                     }
                 })
                 .filter(x -> x != null)
-                .collect(Collectors.toSet());
+                .forEach(days::add);
+        
+        // Add aborted sessions with duration >= 1 minute
+        aborted.stream()
+                .filter(p -> p.getDurationSeconds() != null && p.getDurationSeconds() >= 60)
+                .map(p -> {
+                    try {
+                        if (p.getEndAt() != null) return p.getEndAt().toLocalDate().toString();
+                        if (p.getStartAt() != null && p.getDurationSeconds() != null) {
+                            return p.getStartAt().plusSeconds(p.getDurationSeconds()).toLocalDate().toString();
+                        }
+                        return null;
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .filter(x -> x != null)
+                .forEach(days::add);
 
         int streak = 0;
         for (int i = 0; ; i++) {

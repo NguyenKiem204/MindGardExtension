@@ -88,6 +88,9 @@ public class User implements UserDetails {
     @Column(name = "account_tag", length = 10)
     private String accountTag;
 
+    @Column(name = "bio", length = 500)
+    private String bio;
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return roles.stream()

@@ -26,7 +26,7 @@ public interface PomodoroRepository extends JpaRepository<PomodoroSession, Long>
     @Query("SELECT SUM(p.durationSeconds) FROM PomodoroSession p WHERE p.user.id = :userId AND p.status = 'FINISHED'")
     Long sumDurationSecondsByUserId(@Param("userId") Long userId);
     
-    @Query("SELECT SUM(p.durationSeconds) FROM PomodoroSession p WHERE p.user.id = :userId AND p.status = 'FINISHED' AND p.endAt >= :startDate AND p.endAt < :endDate")
+    @Query("SELECT SUM(p.durationSeconds) FROM PomodoroSession p WHERE p.user.id = :userId AND p.status IN ('FINISHED', 'ABORTED') AND p.endAt >= :startDate AND p.endAt <= :endDate AND p.durationSeconds >= 60")
     Long sumDurationSecondsByUserIdAndDateRange(@Param("userId") Long userId, @Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
     
     @Query("SELECT p FROM PomodoroSession p WHERE p.user.id = :userId AND p.status = 'FINISHED' AND p.endAt >= :startDate AND p.endAt < :endDate")

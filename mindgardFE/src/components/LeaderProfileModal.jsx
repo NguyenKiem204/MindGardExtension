@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, UserPlus, Gift, Copy } from "lucide-react";
+import { X, UserPlus, Gift, Copy, Edit2, Save, Loader2 } from "lucide-react";
+import { userService } from "../services/userService";
+import { authService } from "../services/authService";
 
-export default function LeaderProfileModal({ isOpen, onClose, user, year: controlledYear, onYearChange, onFriendClick, friendBusy, onCopyLink }) {
+export default function LeaderProfileModal({ isOpen, onClose, user, year: controlledYear, onYearChange, onFriendClick, friendBusy, onCopyLink, onProfileUpdated }) {
   // GitHub-like heatmap data (weeks x 7 days)
   const [yearInternal, setYearInternal] = useState(new Date().getFullYear());
   const year = controlledYear ?? yearInternal;
@@ -11,6 +13,10 @@ export default function LeaderProfileModal({ isOpen, onClose, user, year: contro
     else setYearInternal(next);
   };
   const [tooltip, setTooltip] = useState(null); // {left, top, dateStr, minutes}
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", avatarUrl: "", bio: "" });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
 
   const displayName = user?.displayName || user?.name || user?.username || "User";
   const avatarValue = user?.avatarUrl || user?.avatar;
@@ -37,6 +43,7 @@ export default function LeaderProfileModal({ isOpen, onClose, user, year: contro
   ];
 
   const relationship = user?.friendRequestStatus || "NONE";
+  const isSelf = relationship === "SELF";
   const friendLabel =
     relationship === "ACCEPTED" ? "Unfriend" :
       relationship === "SENT" ? "Cancel request" :
@@ -45,6 +52,51 @@ export default function LeaderProfileModal({ isOpen, onClose, user, year: contro
 
   const heatmap = useMemo(() => buildHeatmap(year, user?.studyActivityData), [year, user?.studyActivityData]);
   const gifts = Array.from({ length: 4 }, (_, i) => ({ id: i + 1, label: '1⭐' }));
+
+  // Initialize edit form when user changes or editing starts
+  React.useEffect(() => {
+    if (isEditing && user) {
+      const cached = authService.getCachedAuth();
+      const currentUser = cached?.user;
+      setEditForm({
+        firstName: currentUser?.firstName || user?.firstName || "",
+        lastName: currentUser?.lastName || user?.lastName || "",
+        avatarUrl: user?.avatarUrl || "",
+        bio: user?.bio || "",
+      });
+    }
+  }, [isEditing, user]);
+
+  const handleStartEdit = () => {
+    setIsEditing(true);
+    setEditError("");
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditError("");
+  };
+
+  const handleSaveEdit = async () => {
+    setEditLoading(true);
+    setEditError("");
+    try {
+      await userService.updateProfile(editForm);
+      // Refresh auth cache
+      await authService.refreshMe();
+      setIsEditing(false);
+      if (onProfileUpdated) onProfileUpdated();
+      // Reload profile if callback provided
+      if (onCopyLink) {
+        // Trigger reload by calling parent's reload
+        window.dispatchEvent(new CustomEvent("mindgard_profile_updated"));
+      }
+    } catch (err) {
+      setEditError(err?.response?.data?.message || err?.message || "Failed to update profile");
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   if (!isOpen || !user) return null;
 
@@ -63,30 +115,107 @@ export default function LeaderProfileModal({ isOpen, onClose, user, year: contro
               )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-white text-lg font-semibold">{displayName}</h3>
-                {user?.country && <span className="px-2 py-0.5 text-xs rounded bg-white/10 text-white/80">{user.country}</span>}
-              </div>
-              <div className="text-xs text-white/60 mt-1">LV. {level}</div>
-              {/* Progress bar */}
-              <div className="mt-2 w-72 h-2 rounded-full bg-white/10">
-                <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${xpPct}%` }} />
-              </div>
-              <div className="text-[10px] text-white/50 mt-1">{currentXP} / {xpToNextLevel} XP • {remainingXP} XP to next</div>
+              {isEditing ? (
+                <div className="space-y-3">
+                  {editError && (
+                    <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/30 rounded px-2 py-1">
+                      {editError}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="First name"
+                      value={editForm.firstName}
+                      onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Last name"
+                      value={editForm.lastName}
+                      onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                      className="flex-1 px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Avatar URL"
+                    value={editForm.avatarUrl}
+                    onChange={(e) => setEditForm({ ...editForm, avatarUrl: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <textarea
+                    placeholder="Bio (max 500 characters)"
+                    value={editForm.bio}
+                    onChange={(e) => setEditForm({ ...editForm, bio: e.target.value.slice(0, 500) })}
+                    rows={3}
+                    maxLength={500}
+                    className="w-full px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-sm placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  />
+                  <div className="text-xs text-white/50 text-right">{editForm.bio.length}/500</div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-white text-lg font-semibold">{displayName}</h3>
+                    {user?.country && <span className="px-2 py-0.5 text-xs rounded bg-white/10 text-white/80">{user.country}</span>}
+                  </div>
+                  {user?.bio && (
+                    <div className="text-sm text-white/70 mt-1 max-w-md">{user.bio}</div>
+                  )}
+                  <div className="text-xs text-white/60 mt-1">LV. {level}</div>
+                  {/* Progress bar */}
+                  <div className="mt-2 w-72 h-2 rounded-full bg-white/10">
+                    <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${xpPct}%` }} />
+                  </div>
+                  <div className="text-[10px] text-white/50 mt-1">{currentXP} / {xpToNextLevel} XP • {remainingXP} XP to next</div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2">
-              <Gift className="w-4 h-4"/> Send Gift
-            </button>
-            <button
-              onClick={() => onFriendClick && onFriendClick(user)}
-              disabled={!onFriendClick || friendBusy || relationship === "SELF"}
-              className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              title={relationship === "RECEIVED" ? "Accept request" : relationship === "SENT" ? "Cancel request" : relationship === "ACCEPTED" ? "Unfriend" : "Add friend"}
-            >
-              <UserPlus className="w-4 h-4"/> {friendBusy ? "..." : friendLabel}
-            </button>
+            {isSelf && !isEditing && (
+              <button
+                onClick={handleStartEdit}
+                className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2"
+              >
+                <Edit2 className="w-4 h-4"/> Edit Profile
+              </button>
+            )}
+            {isSelf && isEditing && (
+              <>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={editLoading}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-white text-sm flex items-center gap-2 disabled:opacity-60"
+                >
+                  {editLoading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4"/>} Save
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={editLoading}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+            {!isSelf && (
+              <>
+                <button className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2">
+                  <Gift className="w-4 h-4"/> Send Gift
+                </button>
+                <button
+                  onClick={() => onFriendClick && onFriendClick(user)}
+                  disabled={!onFriendClick || friendBusy}
+                  className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  title={relationship === "RECEIVED" ? "Accept request" : relationship === "SENT" ? "Cancel request" : relationship === "ACCEPTED" ? "Unfriend" : "Add friend"}
+                >
+                  <UserPlus className="w-4 h-4"/> {friendBusy ? "..." : friendLabel}
+                </button>
+              </>
+            )}
             <button
               onClick={onCopyLink || (() => navigator.clipboard?.writeText?.(window.location.href))}
               className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm flex items-center gap-2"

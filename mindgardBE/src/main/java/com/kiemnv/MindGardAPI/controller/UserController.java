@@ -1,11 +1,13 @@
 package com.kiemnv.MindGardAPI.controller;
 
+import com.kiemnv.MindGardAPI.dto.request.UpdateProfileRequest;
 import com.kiemnv.MindGardAPI.dto.response.ApiResponse;
 import com.kiemnv.MindGardAPI.entity.User;
 import com.kiemnv.MindGardAPI.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -47,6 +49,23 @@ public class UserController {
     public ResponseEntity<ApiResponse<User>> updateUser(@PathVariable Long id, @RequestBody User userUpdate) {
         User user = userService.updateUser(id, userUpdate);
         return ResponseEntity.ok(ApiResponse.success(user, "User updated successfully"));
+    }
+
+    @PutMapping("/profile")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Update my profile", description = "Update current user's profile (avatar, name, bio).")
+    public ResponseEntity<ApiResponse<User>> updateProfile(
+            @Valid @RequestBody UpdateProfileRequest request,
+            Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        User userUpdate = User.builder()
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .avatarUrl(request.getAvatarUrl())
+                .bio(request.getBio())
+                .build();
+        User updated = userService.updateUser(currentUser.getId(), userUpdate);
+        return ResponseEntity.ok(ApiResponse.success(updated, "Profile updated successfully"));
     }
 
     @DeleteMapping("/{id}")

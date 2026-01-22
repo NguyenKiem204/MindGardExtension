@@ -34,7 +34,14 @@ public class ApplicationInitConfig {
                         .email("nkiem347@gmail.com")
                         .roles(Set.of(Role.ADMIN))
                         .build();
+                User user1 = User.builder()
+                        .username("user")
+                        .password(passwordEncoder.encode("user"))
+                        .email("nkiem348@gmail.com")
+                        .roles(Set.of(Role.USER))
+                        .build();
                 userRepository.save(user);
+                userRepository.save(user1);
                 log.warn("admin user has bean create with default password: admin, please change it");
             }
         };

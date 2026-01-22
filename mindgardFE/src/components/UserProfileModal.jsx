@@ -11,7 +11,9 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
   const [displayName, setDisplayName] = useState(userName);
   const [displayAccountType, setDisplayAccountType] = useState(accountType);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [registerForm, setRegisterForm] = useState({ username: "", email: "", password: "", firstName: "", lastName: "" });
   const [loginError, setLoginError] = useState("");
   const [isSubmittingLogin, setIsSubmittingLogin] = useState(false);
   const [showPublicProfileModal, setShowPublicProfileModal] = useState(false);
@@ -74,16 +76,34 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
   }, [userName, accountType, isAuthenticated]);
 
   useEffect(() => {
-    const cached = authService.getCachedAuth();
-    if (cached?.accessToken) {
-      const info = authService.getDisplayInfo(userName, accountType);
-      setIsAuthenticated(true);
-      setDisplayName(info.name);
-      setDisplayAccountType(info.type);
-      if (cached?.user?.id) {
-        setUserId(cached.user.id);
+    const checkAuth = () => {
+      const cached = authService.getCachedAuth();
+      if (cached?.accessToken && authService.isAuthenticated()) {
+        const info = authService.getDisplayInfo(userName, accountType);
+        setIsAuthenticated(true);
+        setDisplayName(info.name);
+        setDisplayAccountType(info.type);
+        if (cached?.user?.id) {
+          setUserId(cached.user.id);
+        }
+      } else {
+        setIsAuthenticated(false);
+        setDisplayName(userName);
+        setDisplayAccountType(accountType);
+        setUserId(null);
       }
-    }
+    };
+    checkAuth();
+    // Listen for auth cleared/expired/changed events
+    const onAuthChanged = () => checkAuth();
+    window.addEventListener("mindgard_auth_cleared", onAuthChanged);
+    window.addEventListener("mindgard_auth_expired", onAuthChanged);
+    window.addEventListener("mindgard_auth_changed", onAuthChanged);
+    return () => {
+      window.removeEventListener("mindgard_auth_cleared", onAuthChanged);
+      window.removeEventListener("mindgard_auth_expired", onAuthChanged);
+      window.removeEventListener("mindgard_auth_changed", onAuthChanged);
+    };
   }, [userName, accountType]);
 
   const handleLoginSubmit = async (e) => {
@@ -116,6 +136,44 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
     }
   };
 
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    if (!registerForm.username.trim() || !registerForm.email.trim() || !registerForm.password.trim()) {
+      setLoginError("Vui lòng nhập đầy đủ thông tin.");
+      return;
+    }
+    if (registerForm.password.length < 6) {
+      setLoginError("Mật khẩu phải có ít nhất 6 ký tự.");
+      return;
+    }
+    setLoginError("");
+    setIsSubmittingLogin(true);
+    try {
+      const authData = await authService.register({
+        username: registerForm.username.trim(),
+        email: registerForm.email.trim(),
+        password: registerForm.password,
+        firstName: registerForm.firstName.trim() || "",
+        lastName: registerForm.lastName.trim() || "",
+      });
+      setIsAuthenticated(true);
+      if (authData?.user?.id) setUserId(authData.user.id);
+      const info = authService.getDisplayInfo(
+        authData?.user?.username || registerForm.username,
+        authData?.user?.roles?.join(", ") || "Member"
+      );
+      setDisplayName(info.name);
+      setDisplayAccountType(info.type);
+      setShowLoginModal(false);
+      setIsRegisterMode(false);
+      setRegisterForm({ username: "", email: "", password: "", firstName: "", lastName: "" });
+    } catch (err) {
+      setLoginError(err?.response?.data?.message || err?.message || "Không thể đăng ký.");
+    } finally {
+      setIsSubmittingLogin(false);
+    }
+  };
+
   const handleLogout = async () => {
     await authService.logout();
     setIsAuthenticated(false);
@@ -139,16 +197,32 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
       label: "Public profile", 
       hasChevron: true,
       action: () => {
-        if (userId) {
+        if (isAuthenticated && userId) {
           setShowPublicProfileModal(true);
           onClose();
+        } else {
+          setShowLoginModal(true);
         }
-      }
+      },
+      disabled: !isAuthenticated
     },
     { icon: Brain, label: "Focus mode", hasChevron: false },
     { icon: Search, label: "Find study room", hasChevron: true },
     { icon: Settings, label: "App settings", hasChevron: true },
-    { icon: Users, label: "Manage friends", hasChevron: true, action: () => { setShowFriendsModal(true); onClose(); } },
+    { 
+      icon: Users, 
+      label: "Manage friends", 
+      hasChevron: true, 
+      action: () => {
+        if (isAuthenticated) {
+          setShowFriendsModal(true);
+          onClose();
+        } else {
+          setShowLoginModal(true);
+        }
+      },
+      disabled: !isAuthenticated
+    },
     { icon: null, label: "Discord", hasExternalLink: true, customIcon: "discord", dividerBefore: true },
     { icon: null, label: "Chrome extension", hasExternalLink: true, customIcon: "puzzle" },
     { icon: Grid3x3, label: "Our apps", hasChevron: true },
@@ -205,7 +279,12 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
                 )}
                 <button
                   onClick={() => handleItemClick(item)}
-                  className="w-full flex items-center gap-4 px-6 py-3 text-white hover:bg-white/5 transition-colors"
+                  disabled={item.disabled}
+                  className={`w-full flex items-center gap-4 px-6 py-3 text-white transition-colors ${
+                    item.disabled 
+                      ? "opacity-50 cursor-not-allowed" 
+                      : "hover:bg-white/5"
+                  }`}
                 >
                   {/* Icon */}
                   <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -260,48 +339,164 @@ export default function UserProfileModal({ isOpen, onClose, userName = "kiem", a
                 </button>
                 <div className="p-6 sm:p-7">
                   <div className="mb-4">
-                    <h3 className="text-xl font-semibold text-white mb-1">Đăng nhập</h3>
-                    <p className="text-sm text-gray-400">Sử dụng tài khoản MindGard để đồng bộ.</p>
+                    <h3 className="text-xl font-semibold text-white mb-1">
+                      {isRegisterMode ? "Đăng ký" : "Đăng nhập"}
+                    </h3>
+                    <p className="text-sm text-gray-400">
+                      {isRegisterMode 
+                        ? "Tạo tài khoản MindGard để bắt đầu sử dụng." 
+                        : "Sử dụng tài khoản MindGard để đồng bộ."}
+                    </p>
                   </div>
-                  <form className="space-y-4" onSubmit={handleLoginSubmit}>
-                    <div>
-                      <label className="block text-sm text-gray-300 mb-1">Tài khoản</label>
-                      <input
-                        type="text"
-                        value={loginForm.username}
-                        onChange={(e) => setLoginForm((prev) => ({ ...prev, username: e.target.value }))}
-                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
-                        placeholder="Username"
-                        autoComplete="username"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-gray-300 mb-1">Mật khẩu</label>
-                      <input
-                        type="password"
-                        value={loginForm.password}
-                        onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
-                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
-                        placeholder="••••••••"
-                        autoComplete="current-password"
-                      />
-                    </div>
-
-                    {loginError && (
-                      <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-                        {loginError}
+                  
+                  {isRegisterMode ? (
+                    <form className="space-y-4" onSubmit={handleRegisterSubmit}>
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-1">Tên đăng nhập *</label>
+                        <input
+                          type="text"
+                          value={registerForm.username}
+                          onChange={(e) => setRegisterForm((prev) => ({ ...prev, username: e.target.value }))}
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                          placeholder="Username"
+                          autoComplete="username"
+                          required
+                        />
                       </div>
-                    )}
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-1">Email *</label>
+                        <input
+                          type="email"
+                          value={registerForm.email}
+                          onChange={(e) => setRegisterForm((prev) => ({ ...prev, email: e.target.value }))}
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                          placeholder="email@example.com"
+                          autoComplete="email"
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm text-gray-300 mb-1">Họ</label>
+                          <input
+                            type="text"
+                            value={registerForm.firstName}
+                            onChange={(e) => setRegisterForm((prev) => ({ ...prev, firstName: e.target.value }))}
+                            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                            placeholder="First name"
+                            autoComplete="given-name"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-300 mb-1">Tên</label>
+                          <input
+                            type="text"
+                            value={registerForm.lastName}
+                            onChange={(e) => setRegisterForm((prev) => ({ ...prev, lastName: e.target.value }))}
+                            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                            placeholder="Last name"
+                            autoComplete="family-name"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-1">Mật khẩu *</label>
+                        <input
+                          type="password"
+                          value={registerForm.password}
+                          onChange={(e) => setRegisterForm((prev) => ({ ...prev, password: e.target.value }))}
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                          placeholder="••••••••"
+                          autoComplete="new-password"
+                          minLength={6}
+                          required
+                        />
+                      </div>
 
-                    <button
-                      type="submit"
-                      disabled={isSubmittingLogin}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-600 hover:to-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isSubmittingLogin && <Loader2 className="h-4 w-4 animate-spin" />}
-                      <span>{isSubmittingLogin ? "Đang đăng nhập..." : "Đăng nhập"}</span>
-                    </button>
-                  </form>
+                      {loginError && (
+                        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                          {loginError}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isSubmittingLogin}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-600 hover:to-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSubmittingLogin && <Loader2 className="h-4 w-4 animate-spin" />}
+                        <span>{isSubmittingLogin ? "Đang đăng ký..." : "Đăng ký"}</span>
+                      </button>
+                      
+                      <div className="text-center text-sm text-gray-400">
+                        Đã có tài khoản?{" "}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsRegisterMode(false);
+                            setLoginError("");
+                          }}
+                          className="text-blue-400 hover:text-blue-300 underline"
+                        >
+                          Đăng nhập
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <form className="space-y-4" onSubmit={handleLoginSubmit}>
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-1">Tài khoản</label>
+                        <input
+                          type="text"
+                          value={loginForm.username}
+                          onChange={(e) => setLoginForm((prev) => ({ ...prev, username: e.target.value }))}
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                          placeholder="Username"
+                          autoComplete="username"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-300 mb-1">Mật khẩu</label>
+                        <input
+                          type="password"
+                          value={loginForm.password}
+                          onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-white placeholder:text-gray-500 focus:border-white/30 focus:outline-none"
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                        />
+                      </div>
+
+                      {loginError && (
+                        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                          {loginError}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isSubmittingLogin}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-indigo-500 px-4 py-2.5 font-semibold text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-600 hover:to-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSubmittingLogin && <Loader2 className="h-4 w-4 animate-spin" />}
+                        <span>{isSubmittingLogin ? "Đang đăng nhập..." : "Đăng nhập"}</span>
+                      </button>
+                      
+                      <div className="text-center text-sm text-gray-400">
+                        Chưa có tài khoản?{" "}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsRegisterMode(true);
+                            setLoginError("");
+                          }}
+                          className="text-blue-400 hover:text-blue-300 underline"
+                        >
+                          Đăng ký
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </div>
             </div>,

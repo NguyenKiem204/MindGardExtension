@@ -5,10 +5,12 @@ import TimerSettingsModal from "./TimerSettingsModal";
 import UserProfileModal from "./UserProfileModal";
 import FocusModeModal from "./FocusModeModal";
 import LeaderboardModal from "./LeaderboardModal";
+import LoginModal from "./LoginModal";
 import { Play, Pause, SkipForward, Settings, Volume2, Image, MessageCircle, Zap, Clock, Music, Video, Grid3x3, Cloud, BarChart3, MoreHorizontal, Minus, Maximize2, Square, X } from "lucide-react";
 import { authService } from "../services/authService";
+import { pomodoroService } from "../services/pomodoroService";
 
-export default function StudyFocusUI() {
+export default function StudyFocusUI({ forceShowLogin = false }) {
   const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes in seconds
   const [isRunning, setIsRunning] = useState(false);
   const [selectedTag, setSelectedTag] = useState("");
@@ -21,6 +23,8 @@ export default function StudyFocusUI() {
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
   const [isFocusModeModalOpen, setIsFocusModeModalOpen] = useState(false);
   const [isLeaderboardModalOpen, setIsLeaderboardModalOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLoginModalOnly, setShowLoginModalOnly] = useState(false);
   const [focusModeSetting, setFocusModeSetting] = useState('manual'); // 'manual' | 'ai'
   const [focusTopic, setFocusTopic] = useState('Focus');
   const [backgroundType, setBackgroundType] = useState("room"); // "room", "video", "image"
@@ -38,6 +42,34 @@ export default function StudyFocusUI() {
   const [userName, setUserName] = useState("kiem");
   const [accountType, setAccountType] = useState("Guest Account");
   const [avatarError, setAvatarError] = useState(false);
+
+  // Check authentication on mount and when auth changes
+  useEffect(() => {
+    const checkAuth = () => {
+      const authenticated = authService.isAuthenticated();
+      setIsAuthenticated(authenticated);
+      // If forceShowLogin is true and not authenticated, open login modal only (not full UserProfileModal)
+      if (forceShowLogin && !authenticated && !showLoginModalOnly) {
+        setShowLoginModalOnly(true);
+      }
+      // If authenticated, close login modal
+      if (authenticated) {
+        setShowLoginModalOnly(false);
+      }
+    };
+    
+    checkAuth();
+    const onAuthChanged = () => checkAuth();
+    window.addEventListener("mindgard_auth_cleared", onAuthChanged);
+    window.addEventListener("mindgard_auth_expired", onAuthChanged);
+    window.addEventListener("mindgard_auth_changed", onAuthChanged);
+    
+    return () => {
+      window.removeEventListener("mindgard_auth_cleared", onAuthChanged);
+      window.removeEventListener("mindgard_auth_expired", onAuthChanged);
+      window.removeEventListener("mindgard_auth_changed", onAuthChanged);
+    };
+  }, [forceShowLogin, showLoginModalOnly]);
   
   const isFocusing = isRunning && isFocusMode;
   const pipVideoRef = useRef(null);
@@ -75,18 +107,36 @@ export default function StudyFocusUI() {
 
   // Load user info from auth service
   useEffect(() => {
-    const cached = authService.getCachedAuth();
-    if (cached?.user) {
-      setUserAvatar(cached.user.avatarUrl || null);
-      setUserName(cached.user.username || cached.user.email || "kiem");
-      setAccountType(
-        (Array.isArray(cached.user.roles) && cached.user.roles.join(", ")) ||
-        cached.user.roleName ||
-        "Guest Account"
-      );
-      setAvatarError(false); // Reset error when avatar changes
-    }
-  }, [isUserProfileModalOpen]); // Reload when modal opens
+    const checkAuth = () => {
+      const cached = authService.getCachedAuth();
+      if (cached?.user && authService.isAuthenticated()) {
+        setUserAvatar(cached.user.avatarUrl || null);
+        setUserName(cached.user.username || cached.user.email || "kiem");
+        setAccountType(
+          (Array.isArray(cached.user.roles) && cached.user.roles.join(", ")) ||
+          cached.user.roleName ||
+          "Guest Account"
+        );
+        setAvatarError(false);
+      } else {
+        setUserAvatar(null);
+        setUserName("kiem");
+        setAccountType("Guest Account");
+        setAvatarError(false);
+      }
+    };
+    checkAuth();
+    // Listen for auth cleared/expired/changed events
+    const onAuthChanged = () => checkAuth();
+    window.addEventListener("mindgard_auth_cleared", onAuthChanged);
+    window.addEventListener("mindgard_auth_expired", onAuthChanged);
+    window.addEventListener("mindgard_auth_changed", onAuthChanged);
+    return () => {
+      window.removeEventListener("mindgard_auth_cleared", onAuthChanged);
+      window.removeEventListener("mindgard_auth_expired", onAuthChanged);
+      window.removeEventListener("mindgard_auth_changed", onAuthChanged);
+    };
+  }, [isUserProfileModalOpen]); // Also reload when modal opens
 
   // Save focus mode settings
   useEffect(() => {
@@ -329,6 +379,7 @@ export default function StudyFocusUI() {
 
   const intervalRef = useRef(null);
   const endTimeRef = useRef(null);
+  const startTimeRef = useRef(null); // Track when timer started for partial session recording
   const settingsButtonRef = useRef(null);
 
   // Initialize and manage PiP video element
@@ -619,6 +670,13 @@ export default function StudyFocusUI() {
       // When starting, set target end time based on current remaining
       if (!endTimeRef.current) {
         endTimeRef.current = Date.now() + timeLeft * 1000;
+        startTimeRef.current = Date.now(); // Track start time for partial session
+        console.log("[StudyFocusUI] Timer started", {
+          isFocusMode,
+          startTime: startTimeRef.current,
+          endTime: endTimeRef.current,
+          timeLeft,
+        });
       }
       intervalRef.current = setInterval(() => {
         const now = Date.now();
@@ -627,22 +685,44 @@ export default function StudyFocusUI() {
         setTimeLeft(remainingSec);
         if (remainingSec <= 0) {
           // Session finished → switch mode
-            setIsRunning(false);
-          endTimeRef.current = null;
-            if (isFocusMode) {
-              setIsFocusMode(false);
-              setTimeLeft(breakDuration * 60);
-            } else {
-              setIsFocusMode(true);
-              setTimeLeft(focusDuration * 60);
-            }
+          setIsRunning(false);
+          const completedMin = isFocusMode ? focusDuration : breakDuration;
+          
+          // Record completed session if focus mode
+          if (isFocusMode && authService.isAuthenticated()) {
+            (async () => {
+              try {
+                const dateISO = new Date().toISOString();
+                await pomodoroService.record({
+                  dateISO,
+                  durationMin: completedMin,
+                  taskTitle: taskInput || "Deep work",
+                  isPartial: false, // Completed session
+                });
+                console.log(`[StudyFocusUI] Recorded completed session: ${completedMin} minutes`);
+              } catch (e) {
+                console.error("[StudyFocusUI] Failed to record completed session:", e);
+              }
+            })();
           }
+          
+          endTimeRef.current = null;
+          startTimeRef.current = null;
+          if (isFocusMode) {
+            setIsFocusMode(false);
+            setTimeLeft(breakDuration * 60);
+          } else {
+            setIsFocusMode(true);
+            setTimeLeft(focusDuration * 60);
+          }
+        }
       }, 250);
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
-      endTimeRef.current = null; // pause keeps current timeLeft
+      // Don't clear endTimeRef on pause - we need it to calculate elapsed time
+      // endTimeRef.current = null; // pause keeps current timeLeft
     }
 
     return () => {
@@ -672,12 +752,75 @@ export default function StudyFocusUI() {
     return Math.min(1, Math.max(0, p));
   };
 
-  const toggleTimer = () => {
+  const toggleTimer = async () => {
+    console.log("[StudyFocusUI] toggleTimer() called", {
+      isRunning,
+      isFocusMode,
+      hasStartTime: !!startTimeRef.current,
+      hasEndTime: !!endTimeRef.current,
+      startTime: startTimeRef.current,
+      endTime: endTimeRef.current,
+      timeLeft,
+    });
+    
     if (!isRunning) {
       endTimeRef.current = Date.now() + timeLeft * 1000;
+      startTimeRef.current = Date.now();
       setIsRunning(true);
+      console.log("[StudyFocusUI] Timer started", {
+        isFocusMode,
+        startTime: startTimeRef.current,
+        endTime: endTimeRef.current,
+        timeLeft,
+      });
     } else {
+      // Pause: record partial session if focus mode and >= 1 minute
+      console.log("[StudyFocusUI] Pausing...", {
+        isFocusMode,
+        hasStartTime: !!startTimeRef.current,
+        hasEndTime: !!endTimeRef.current,
+        isAuthenticated: authService.isAuthenticated(),
+      });
+      
+      if (isFocusMode && startTimeRef.current && endTimeRef.current && authService.isAuthenticated()) {
+        const elapsedMs = Date.now() - startTimeRef.current;
+        const elapsedSec = Math.floor(elapsedMs / 1000);
+        const elapsedMin = Math.floor(elapsedSec / 60);
+        
+        console.log(`[StudyFocusUI] Pause: elapsed=${elapsedMin} minutes (${elapsedSec} seconds), authenticated=${authService.isAuthenticated()}`);
+        
+        if (elapsedMin >= 1) {
+          try {
+            const dateISO = new Date().toISOString();
+            console.log(`[StudyFocusUI] Calling API to record partial session: ${elapsedMin} minutes`);
+            const result = await pomodoroService.record({
+              dateISO,
+              durationMin: elapsedMin,
+              taskTitle: taskInput || "Deep work",
+              isPartial: true,
+            });
+            console.log(`[StudyFocusUI] Successfully recorded partial session:`, result);
+          } catch (err) {
+            console.error("[StudyFocusUI] Failed to record partial session:", {
+              error: err,
+              response: err?.response?.data,
+              status: err?.response?.status,
+            });
+          }
+        } else {
+          console.log(`[StudyFocusUI] Skipped recording: ${elapsedMin} minutes (< 1 minute threshold)`);
+        }
+      } else {
+        console.log(`[StudyFocusUI] Pause conditions not met:`, {
+          isFocusMode,
+          hasStartTime: !!startTimeRef.current,
+          hasEndTime: !!endTimeRef.current,
+          isAuthenticated: authService.isAuthenticated(),
+        });
+      }
       setIsRunning(false);
+      // Keep endTimeRef for resume, but reset startTimeRef
+      startTimeRef.current = null;
     }
   };
 
@@ -1087,7 +1230,13 @@ export default function StudyFocusUI() {
             <span className="text-sm font-medium">{breakTime}m</span>
           </div>
           <button 
-            onClick={() => setIsLeaderboardModalOpen(true)}
+            onClick={() => {
+              if (!isAuthenticated) {
+                setIsUserProfileModalOpen(true);
+              } else {
+                setIsLeaderboardModalOpen(true);
+              }
+            }}
             className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition backdrop-blur-md border border-white/30"
           >
             <BarChart3 className="w-5 h-5" />
@@ -1421,6 +1570,16 @@ export default function StudyFocusUI() {
       <LeaderboardModal
         isOpen={isLeaderboardModalOpen}
         onClose={() => setIsLeaderboardModalOpen(false)}
+      />
+
+      {/* Login Modal (standalone, when forceShowLogin) */}
+      <LoginModal
+        isOpen={showLoginModalOnly}
+        onClose={() => setShowLoginModalOnly(false)}
+        onLoginSuccess={() => {
+          setIsAuthenticated(true);
+          setShowLoginModalOnly(false);
+        }}
       />
 
     </div>

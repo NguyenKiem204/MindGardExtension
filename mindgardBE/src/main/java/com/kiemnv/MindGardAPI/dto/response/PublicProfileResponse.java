@@ -18,6 +18,7 @@ public class PublicProfileResponse {
     private String displayName;
     private String avatarUrl;
     private String accountTag;
+    private String bio;
     
     // Level & XP
     private Integer level;

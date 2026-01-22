@@ -33,7 +33,7 @@ public class PomodoroService {
         return pomodoroRepository.findByUserId(user.getId(), pageable);
     }
 
-    /** FE extension: record completed focus session (dateISO, durationMin, taskTitle) */
+    /** FE extension: record completed or partial focus session (dateISO, durationMin, taskTitle, isPartial) */
     @Transactional
     public PomodoroSession record(User user, PomodoroRecordRequest req) {
         if (req == null || req.getDateISO() == null || req.getDurationMin() == null) {
@@ -43,17 +43,26 @@ public class PomodoroService {
         LocalDateTime endAt = LocalDateTime.ofInstant(endInstant, ZoneId.of("UTC"));
         int durationMin = req.getDurationMin();
         LocalDateTime startAt = endAt.minusMinutes(durationMin);
+        boolean isPartial = Boolean.TRUE.equals(req.getIsPartial());
+        
         PomodoroSession s = PomodoroSession.builder()
                 .user(user)
                 .task(req.getTaskTitle() != null ? req.getTaskTitle() : "")
                 .startAt(startAt)
                 .endAt(endAt)
                 .durationSeconds(durationMin * 60L)
-                .status(PomodoroSession.Status.FINISHED)
+                .status(isPartial ? PomodoroSession.Status.ABORTED : PomodoroSession.Status.FINISHED)
                 .build();
         PomodoroSession saved = pomodoroRepository.save(s);
+        
         // update stats + XP/level
-        userStatsService.applyCompletedSession(user, endAt, durationMin * 60L);
+        if (isPartial) {
+            // Partial session: only time, XP, level, streak (no pomodoro count)
+            userStatsService.applyPartialSession(user, endAt, durationMin * 60L);
+        } else {
+            // Completed session: full credit
+            userStatsService.applyCompletedSession(user, endAt, durationMin * 60L);
+        }
         return saved;
     }
 
@@ -130,8 +139,15 @@ public class PomodoroService {
         }
         p.setStatus(interrupted ? PomodoroSession.Status.ABORTED : PomodoroSession.Status.FINISHED);
         PomodoroSession saved = pomodoroRepository.save(p);
-        if (!interrupted && saved.getEndAt() != null && saved.getDurationSeconds() != null) {
-            userStatsService.applyCompletedSession(user, saved.getEndAt(), saved.getDurationSeconds());
+        
+        if (saved.getEndAt() != null && saved.getDurationSeconds() != null) {
+            if (!interrupted) {
+                // Completed session: full credit
+                userStatsService.applyCompletedSession(user, saved.getEndAt(), saved.getDurationSeconds());
+            } else {
+                // Interrupted session: partial credit (time, XP, level, streak, but no pomodoro count)
+                userStatsService.applyPartialSession(user, saved.getEndAt(), saved.getDurationSeconds());
+            }
         }
         return saved;
     }

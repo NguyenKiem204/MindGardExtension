@@ -11,6 +11,15 @@ export default function PublicProfileModal({ isOpen, onClose, userId }) {
   const [error, setError] = useState("");
   const [friendBusy, setFriendBusy] = useState(false);
 
+  // Listen for profile update events
+  useEffect(() => {
+    const handler = () => {
+      if (isOpen && userId) loadProfile();
+    };
+    window.addEventListener("mindgard_profile_updated", handler);
+    return () => window.removeEventListener("mindgard_profile_updated", handler);
+  }, [isOpen, userId]);
+
   const loadProfile = async () => {
     if (!userId) return;
     setLoading(true);
@@ -100,6 +109,7 @@ export default function PublicProfileModal({ isOpen, onClose, userId }) {
       onFriendClick={onFriendClick}
       friendBusy={friendBusy}
       onCopyLink={copyProfileLink}
+      onProfileUpdated={loadProfile}
     />
   );
 }

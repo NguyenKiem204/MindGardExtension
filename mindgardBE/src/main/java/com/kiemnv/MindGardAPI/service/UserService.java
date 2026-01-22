@@ -67,6 +67,13 @@ public class UserService implements UserDetailsService {
         if (userUpdate.getEmail() != null) {
             existingUser.setEmail(userUpdate.getEmail());
         }
+        if (userUpdate.getAvatarUrl() != null) {
+            existingUser.setAvatarUrl(userUpdate.getAvatarUrl());
+        }
+        if (userUpdate.getBio() != null) {
+            existingUser.setBio(userUpdate.getBio());
+        }
+        existingUser.setUpdatedAt(LocalDateTime.now());
 
         return userRepository.save(existingUser);
     }
@@ -149,6 +156,7 @@ public class UserService implements UserDetailsService {
             .displayName(displayName)
             .avatarUrl(user.getAvatarUrl())
             .accountTag(user.getAccountTag())
+            .bio(user.getBio())
             .level(user.getLevel() != null ? user.getLevel() : 1)
             .currentXP(user.getCurrentXP() != null ? user.getCurrentXP() : 0L)
             .xpToNextLevel(user.getXpToNextLevel() != null ? user.getXpToNextLevel() : 100L)

@@ -1,13 +1,59 @@
-import { useState } from "react";
-import { X, Globe, Users, ChevronLeft, ChevronRight, Info, Clock, Gift } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, Globe, Users, ChevronLeft, ChevronRight, Info, Clock, Gift, Loader2, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import LeaderProfileModal from "./LeaderProfileModal";
+import { leaderboardService } from "../services/leaderboardService";
+import { api } from "../utils/api";
 
 export default function LeaderboardModal({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState("global"); // 'global' | 'friends'
   const [activeFilter, setActiveFilter] = useState("daily"); // 'daily' | 'weekly' | 'monthly'
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Mock dataset for Global/Friends x Daily/Weekly/Monthly
+  // Load leaderboard data
+  useEffect(() => {
+    if (!isOpen) return;
+    loadLeaderboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab, activeFilter, currentDate]);
+
+  const loadLeaderboard = async () => {
+    console.log("[LeaderboardModal] loadLeaderboard() called", {
+      activeTab,
+      activeFilter,
+      currentDate: currentDate.toISOString(),
+    });
+    setLoading(true);
+    setError("");
+    try {
+      console.log("[LeaderboardModal] Calling API...");
+      const entries = await leaderboardService.getRealLeaderboard(
+        activeFilter,
+        currentDate,
+        activeTab
+      );
+      console.log("[LeaderboardModal] API response:", {
+        entriesCount: entries?.length || 0,
+        entries: entries,
+      });
+      setData(entries || []);
+    } catch (err) {
+      console.error("[LeaderboardModal] Error loading leaderboard:", {
+        error: err,
+        response: err?.response?.data,
+        status: err?.response?.status,
+        message: err?.message,
+      });
+      setError(err?.response?.data?.message || err?.message || "Failed to load leaderboard");
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Mock dataset for Global/Friends x Daily/Weekly/Monthly (fallback)
   const MOCK = {
     global: {
       daily: [
@@ -61,8 +107,14 @@ export default function LeaderboardModal({ isOpen, onClose }) {
     },
   };
 
-  const data = (MOCK[activeTab] && MOCK[activeTab][activeFilter]) || [];
   const [profileUser, setProfileUser] = useState(null);
+
+  const formatTime = (minutes) => {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
 
   const formatDate = (date) => {
     if (activeFilter === 'daily') {
@@ -189,81 +241,107 @@ export default function LeaderboardModal({ isOpen, onClose }) {
 
         {/* Leaderboard Content */}
         <div className="flex-1 overflow-y-auto custom-scroll p-6">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-white/10">
-                <th className="text-left py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">#</th>
-                <th className="text-left py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">User</th>
-                <th className="text-center py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">
-                  <Clock className="w-4 h-4 inline" />
-                </th>
-                <th className="text-center py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">
-                  <Gift className="w-4 h-4 inline" />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((user) => (
-                <tr
-                  key={user.rank}
-                  className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
-                  onClick={()=> setProfileUser(user)}
-                >
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white font-medium">{user.rank}</span>
-                      {user.trend === "up" && (
-                        <svg
-                          className="w-4 h-4 text-green-500"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
-                        {user.avatar}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-white font-medium text-sm">
-                            {user.country && (
-                              <span className="text-white/60 mr-1">{user.country}</span>
-                            )}
-                            {user.name}
-                          </span>
-                        </div>
-                        {user.description && (
-                          <div className="text-white/50 text-xs mt-0.5">{user.description}</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className="text-white text-sm">{user.time}</span>
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    {user.gifts > 0 ? (
-                      <div className="flex items-center justify-center gap-1">
-                        <Gift className="w-4 h-4 text-white/60" />
-                        <span className="text-white text-sm">{user.gifts}</span>
-                      </div>
-                    ) : (
-                      <span className="text-white/30 text-sm">-</span>
-                    )}
-                  </td>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-white" />
+            </div>
+          ) : error ? (
+            <div className="text-red-300 text-sm text-center py-12">{error}</div>
+          ) : data.length === 0 ? (
+            <div className="text-white/60 text-sm text-center py-12">No data available</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-white/10">
+                  <th className="text-left py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">#</th>
+                  <th className="text-left py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">User</th>
+                  <th className="text-center py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">
+                    <Clock className="w-4 h-4 inline" />
+                  </th>
+                  <th className="text-center py-3 px-4 text-white/60 text-xs font-medium uppercase tracking-wider">
+                    <Gift className="w-4 h-4 inline" />
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.map((entry) => {
+                  const avatarValue = entry.avatarUrl;
+                  const displayName = entry.displayName || entry.username || "User";
+                  const avatarDisplay = typeof avatarValue === "string" && (avatarValue.startsWith("http") || avatarValue.startsWith("data:") || avatarValue.startsWith("/"))
+                    ? avatarValue
+                    : String(displayName).charAt(0).toUpperCase();
+                  return (
+                    <tr
+                      key={entry.userId}
+                      className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
+                      onClick={async () => {
+                        // Load full profile
+                        try {
+                          const res = await api.get(`/users/${entry.userId}/public-profile`);
+                          if (res.data?.success) {
+                            setProfileUser(res.data.data);
+                          }
+                        } catch (err) {
+                          console.warn("Failed to load profile:", err);
+                        }
+                      }}
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-medium">{entry.rank}</span>
+                          {entry.trend && (
+                            <span className="flex items-center" title={
+                              entry.previousRank 
+                                ? `Previous rank: ${entry.previousRank}` 
+                                : "New entry"
+                            }>
+                              {entry.trend === "up" && (
+                                <ArrowUp className="w-4 h-4 text-green-400" />
+                              )}
+                              {entry.trend === "down" && (
+                                <ArrowDown className="w-4 h-4 text-red-400" />
+                              )}
+                              {entry.trend === "stable" && (
+                                <Minus className="w-4 h-4 text-gray-400" />
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 overflow-hidden flex items-center justify-center text-white font-semibold text-sm">
+                            {typeof avatarValue === "string" && (avatarValue.startsWith("http") || avatarValue.startsWith("data:") || avatarValue.startsWith("/")) ? (
+                              <img src={avatarValue} alt={displayName} className="w-full h-full object-cover" />
+                            ) : (
+                              <span>{avatarDisplay}</span>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-medium text-sm">{displayName}</span>
+                              {entry.level && (
+                                <span className="px-1.5 py-0.5 text-xs rounded bg-white/10 text-white/80">LV.{entry.level}</span>
+                              )}
+                            </div>
+                            {entry.bio && (
+                              <div className="text-white/50 text-xs mt-0.5 line-clamp-1">{entry.bio}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="text-white text-sm">{formatTime(entry.totalMinutes || 0)}</span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="text-white/30 text-sm">-</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Custom Scrollbar Styling */}
@@ -275,7 +353,15 @@ export default function LeaderboardModal({ isOpen, onClose }) {
           .custom-scroll{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
         `}</style>
       </div>
-      <LeaderProfileModal isOpen={!!profileUser} onClose={()=>setProfileUser(null)} user={profileUser} />
+      {profileUser && (
+        <LeaderProfileModal
+          isOpen={!!profileUser}
+          onClose={() => setProfileUser(null)}
+          user={profileUser}
+          year={new Date().getFullYear()}
+          onYearChange={() => {}}
+        />
+      )}
     </div>
   );
 }
