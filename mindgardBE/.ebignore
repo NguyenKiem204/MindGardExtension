@@ -1,0 +1,28 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# IDE files
+.idea
+.vscode
+*.iml
+
+# Build files
+target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# Documentation
+README.md
+*.md
+
+# Docker compose (not needed for EB)
+docker-compose.yml
+
+# Test files
+src/test/
+
+# Local config
+src/main/resources/application-local.yml

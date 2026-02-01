@@ -80,6 +80,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(jwtAuthenticationEntryPoint))
                 .authorizeHttpRequests(authz -> authz
+                                .requestMatchers("/", "/health").permitAll()
                                 .requestMatchers("/v3/api-docs/**","/swagger/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                                 .requestMatchers("/api/feedback/**").permitAll()
                                 .requestMatchers("/api/auth/**").permitAll()
@@ -97,6 +98,7 @@ public class SecurityConfig {
                                 .requestMatchers("/api/friends/**").hasAnyRole("USER", "ADMIN")
                                 .requestMatchers(HttpMethod.GET, "/api/leaderboard").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/leaderboard/top").permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/sounds/music").permitAll()
                                 .requestMatchers(HttpMethod.GET, "/api/leaderboard/real").hasAnyRole("USER", "ADMIN")
                                 .requestMatchers("/api/stats/**").hasAnyRole("USER", "ADMIN")
                                 .anyRequest().authenticated()

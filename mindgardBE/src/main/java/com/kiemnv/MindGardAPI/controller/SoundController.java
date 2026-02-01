@@ -24,6 +24,12 @@ public class SoundController {
 
     private final SoundService soundService;
 
+    @GetMapping("/music")
+    @Operation(summary = "List curated music (Hardcoded)")
+    public ResponseEntity<ApiResponse<List<com.kiemnv.MindGardAPI.dto.response.MusicResponse>>> listMusic() {
+        return ResponseEntity.ok(ApiResponse.success(soundService.getMusicList(), "Music list retrieved"));
+    }
+
     @GetMapping
     @SecurityRequirement(name = "bearerAuth")
     @Operation(summary = "List sounds (paged)")
